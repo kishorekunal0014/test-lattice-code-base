@@ -1,0 +1,28 @@
+INIT:
+  north_details:
+    north_id: ONS
+    base_url: https://8147918.suitetalk.api.netsuite.com
+    auth_type: OAUTH1
+  south_details:
+    south_id: EQX
+    base_url: https://playgroundapi.equinix.com
+    auth_type: BEARER
+
+REDIS:
+  ORGANISATION: Vidatt
+  NORTH:
+    - ONS
+  SOUTH:
+    - EQX
+
+POLL_PurchaseOrder:
+  north:
+    - ONS:        
+        ITEMS:
+          - cross_connect
+  south:
+    - EQX:
+
+POLL_OrderStatus:
+  north: ONS
+  south: EQX
