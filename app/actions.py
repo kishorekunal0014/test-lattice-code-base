@@ -15,11 +15,13 @@ from app.logger import get_logger
 
 log = get_logger()
 
-async def Authenticate_Token():
-    pass
-
 async def create_cross_connect(item_details):
+    '''
+    This function send request to the south side to order cross connect
+    '''
     log.info("Sending order to equinix to create cross connect")
+
+    # create fictitious Order ID as equinix responds NULL 
     with open('db/equinix/order_status.json', 'r') as orders_list:
             order_ids = json.load(orders_list)
     while(True):
@@ -32,14 +34,27 @@ async def create_cross_connect(item_details):
                 json.dump(order_ids, orders_list)
                 log.info("Generated order ID")
                 return o_id
-        
+
+async def ons_mark_complete(po_id, auth):
+    '''
+    This function updates the PO status in ONS
+    '''
+    BASE_URL = transaction_manager.north_details["base_url"]
+    url = f"{BASE_URL}/services/rest/record/v1/purchaseOrder/{po_id}/!transform/itemReceipt"
+    return requests.post(url, auth=auth)
+
+
 async def update_po_status(po_id, status, user_manager):
     data = {
                 "memo" : status[:-2]
             }
-    
-    po_url = f"https://8147918.suitetalk.api.netsuite.com/services/rest/record/v1/purchaseorder/{po_id}"
-    requests.patch(po_url, json=data, auth=user_manager.user_oauth1)
+    BASE_URL = transaction_manager.north_details["base_url"]
+    po_url = f"{BASE_URL}/services/rest/record/v1/purchaseorder/{po_id}"
+    response = requests.patch(po_url, json=data, auth=user_manager.user_oauth1)
+    if response.status_code == 200:
+        log.info("Successfully updated status in ONS")
+    else:
+        log.error(f"Failed to update status in ONS. Status code: {response.status_code}")
 
 async def process_po_item(item_details):
     if item_details['item']['refName'] == "CrossConnect":
@@ -49,14 +64,26 @@ async def process_po_item(item_details):
     else:
         return "Item '" + item_details['item']['refName'] + "' Not registered with Lattice, please check with admin.", -1
 
-async def get_ons_details(po_url, user_manager):
-
-    response = requests.get(po_url,auth=user_manager.user_oauth1)
-    return response.json()
+async def get_ons_details(po_url, user_auth):
+    '''
+    This function takes ONS endpoint as input,
+    makes API call to ONS and returns the response.
+    '''
+    log.info(f"[{transaction_manager.transaction_id}] Making API call to ONS to get details")
+    response = requests.get(po_url,auth=user_auth)
+    if response.status_code == 200:
+        log.info(f"[{transaction_manager.transaction_id}] API call to ONS successful")
+        return response.json()
+    else:
+        log.error(f"[{transaction_manager.transaction_id}] API call to ONS unsuccessful.")
+        log.error(f"Response code: {response.status_code}, message: {response.content}")
 
 async def add_po_to_db(user_id, po_id, item_status):
-    
+    '''
+    Add PO details to redis.
+    '''
     po_details = pickle.loads(redis_manager.redis.get("po_details"))
+    # if user data not in redis
     if user_id not in po_details.keys():
          po_details[user_id] = {}
          po_details[user_id][po_id] = {
@@ -71,6 +98,12 @@ async def add_po_to_db(user_id, po_id, item_status):
     redis_manager.redis.set("po_details", pickle.dumps(po_details))
     
 async def execute_api(api_data):
+     '''
+     This function takes API data as input, 
+     generates the end point and body parameters and
+     makes the API call.
+     Return value is response from the API call.
+     '''
      api_method = api_data["method"]
      url = api_data["BASE_URL"] + api_data["route"]
      if api_method == "GET":
@@ -86,14 +119,17 @@ async def Poll_PurchaseOrder():
     log.info("Polling  PO")
     user_manager = UserManager("vidatt")
     north_id = transaction_manager.north_details["north_id"]
+
     # get api details from redis
     api_data = pickle.loads(redis_manager.redis.get("north_data"))[north_id]['api_details']['polling']['purchase_order']['get_details']
     api_data["BASE_URL"] = transaction_manager.north_details["base_url"]
     api_data["AUTH"] = user_manager.user_oauth1
+
     # get PO list
     po_list = await execute_api(api_data)
     log.info("Successfully fetched PO list.")
     new_po  = False
+
     # check if number of PO is more than 0
     if po_list['totalResults'] == 0:
         log.info("No purchase orders found in the list")
@@ -109,21 +145,24 @@ async def Poll_PurchaseOrder():
                 await transaction_manager.new_transaction_id()
                 log.info(f"Created new transaction {transaction_manager.transaction_id}")
                 log.info(f"[{transaction_manager.transaction_id}] Get PO details")
-                po_details = await get_ons_details(po['links'][0]['href'], user_manager)
+                po_details = await get_ons_details(po['links'][0]['href'], user_manager.user_oauth1)
                 log.info(f"[{transaction_manager.transaction_id}] Get items list")
-                items_list = await get_ons_details(po_details['item']['links'][0]['href'], user_manager)
+                items_list = await get_ons_details(po_details['item']['links'][0]['href'], user_manager.user_oauth1)
                 po_status = "Order Status: \n"
                 item_count = 0
                 items_status = {}
+                # process items
+                log.info(f"[{transaction_manager.transaction_id}] Iterating items list")
                 for item in items_list['items']:
                     item_count += 1
                     log.info(f"[{transaction_manager.transaction_id}] Get item details")
-                    item_details = await get_ons_details(item['links'][0]['href'], user_manager)
+                    item_details = await get_ons_details(item['links'][0]['href'], user_manager.user_oauth1)
                     log.info(f"[{transaction_manager.transaction_id}] Processing item")
                     item_status, south_order_id = await process_po_item(item_details)
                     po_status += f"Item {item_count}: " + item_status + ", \n"
-                    items_status[item_count] = {"status" : item_status,
-                                                "south_order_id" : south_order_id
+                    items_status[item_count] = {
+                                                    "status" : item_status,
+                                                    "south_order_id" : south_order_id
                                                 }
                 
                 (user_manager.processed_po).append(int(po['id']))
@@ -137,8 +176,14 @@ async def Poll_PurchaseOrder():
         else:
             # update PO list in redis          
             log.info("Updating user's PO list in redis")
-    await user_manager.update_po_list()
+            await user_manager.update_po_list()
+
+    # clear user variables
+    await user_manager.clean_up()
+    del user_manager
+    log.info("Cleared user's details.")
     log.info("Polling PO completed.")
+    
 
 @repeat_every(seconds=POLL_DURATION)
 async def Poll_OrderStatus():
@@ -156,21 +201,36 @@ async def Poll_OrderStatus():
             order_status_data = json.load(order_status_list)
     po_details_lst = pickle.loads(redis_manager.redis.get("po_details"))
     po_details = po_details_lst[user_manager.user_id]
-    log.info("Checking status of items in equinix.")
+    log.info("Checking status of items in equinix data.")
     for po_id, po_data in po_details.items():
         status_updated = False
         po_status = "Order Status: \n"
         transaction_id = po_data["transaction_id"]
+        item_count = 0
+        item_completed = 0
         for item_id, item_data in po_data['items'].items():
             south_order_id = item_data['south_order_id']
             if south_order_id == -1:
                 continue
+            item_count += 1
+            if order_status_data[south_order_id] == "Order completed":
+                item_completed += 1
             if item_data['status'] == order_status_data[south_order_id] or order_status_data[south_order_id] == "":
                 po_status += f"Item {item_id}: " + item_data['status'] + ', '
             else:
                 po_status += f"Item {item_id}: Status in Equinix({south_order_id}) - " + order_status_data[south_order_id] + ','
                 status_updated = True
                 po_details_lst[user_manager.user_id][po_id]['items'][item_id]['status'] = order_status_data[south_order_id]
+
+        # if all item orders are completed, update PO status in ONS
+        if item_count == item_completed:
+            log.info(f"All items for transaction {transaction_id} are completed from south")
+            ons_status_code = await ons_mark_complete(po_id, user_manager.user_oauth1)
+            if ons_status_code == 200:
+                log.info("Updated PO status in ONS")
+            else:
+                log.error("Failed to update PO status in ONS. Response")
+
         # check if status was updated
         if status_updated:
              await update_po_status(po_id, po_status, user_manager)

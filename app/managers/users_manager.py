@@ -13,6 +13,9 @@ class UserManager:
         self.processed_po = self.get_processed_po_list()
     
     def get_oauth1_token(self):
+        '''
+        Retrieve user's OAUTH1 tokens.
+        '''
         user_token = pickle.loads(redis_manager.redis.get("user_data"))[0]["tokens"]["oauth1"]
         return OAuth1(
                         user_token['client_id'],
@@ -26,7 +29,7 @@ class UserManager:
 
     def get_processed_po_list(self):
         '''
-        Returns list of PO which are processed/being processed
+        Returns list of PO which are processed/being processed.
         '''
         try:
             return pickle.loads(redis_manager.redis.get("po_list"))[self.user_id]
@@ -35,9 +38,17 @@ class UserManager:
         
     async def update_po_list(self):
         '''
-        Updates the PO list in redis
+        Updates the PO list in redis.
         '''
         new_po_list = pickle.loads(redis_manager.redis.get("po_list"))
         new_po_list[self.user_id] = self.processed_po
         redis_manager.redis.set("po_list", pickle.dumps(new_po_list))
+
+    async def clean_up(self):
+        '''
+        This function clears the data from user variables.
+        '''
+        self.user_id = None
+        self.user_oauth1 = None
+        self.processed_po = None
         
