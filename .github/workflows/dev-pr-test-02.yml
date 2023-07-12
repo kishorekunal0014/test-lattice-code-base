@@ -1,4 +1,4 @@
-name: Testing Pull request mechanism
+name: Testing Pull request mechanism in develop branch
 
 on:
 
@@ -33,4 +33,3 @@ jobs:
       - name: testing
         run: |
           echo "Testing"
-
