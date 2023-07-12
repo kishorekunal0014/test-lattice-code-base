@@ -1,12 +1,15 @@
 name: Testing Pull request mechanism
 
 on:
+ 
+  push:
+    branches: [ develop ]
   pull_request:
-    branches:
-      - develop
+    branches: [ develop ]
 
-jobs:
-  runner:
+  build:
+
+    name: Building Image
     runs-on: ubuntu-latest
 
     strategy:
@@ -31,6 +34,6 @@ jobs:
           
       - name: testing
       - run: |
-          echo "Testing the code"
+          echo "Testing the code adding push and pull requests"
 
 
