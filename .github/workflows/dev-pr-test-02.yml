@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: [ 3.10, 3.11 ]
+        python-version: [ 3.11 ]
 
     env:
       MODE: "dev"
@@ -32,4 +32,4 @@ jobs:
 
       - name: testing
         run: |
-          echo "Testing"
+          echo "Testing f7-02"
