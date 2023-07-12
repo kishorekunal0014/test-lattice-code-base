@@ -8,6 +8,9 @@ from app.doc_db_init import init_populate_doc_db
 from app.config import INSTRUCTIONS_PATH
 from app.logger import get_logger
 
+# KK
+import os
+
 log = get_logger()
 
 app = FastAPI()   
@@ -53,5 +56,9 @@ def update_eq_status(order_id : str, status : int):
     else:
         log.error(f"Invalid order ID passed {order_id}.")
         return HTTPException(status_code=404, detail=f"Order ID does not exist : {order_id}")
-
+ 
+ #KK
+@app.route('/get-mode')   
+def get_mode():
+    return os.environ.get("Mode")
 
