@@ -1,4 +1,4 @@
-name: Testing Pull request mechanism
+name: Testing Pull request mechanism in develop branch
 
 on:
 
@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: [ 3.10, 3.11 ]
+        python-version: [ 3.11 ]
 
     env:
       MODE: "dev"
@@ -33,4 +33,3 @@ jobs:
       - name: testing
         run: |
           echo "Testing"
-
