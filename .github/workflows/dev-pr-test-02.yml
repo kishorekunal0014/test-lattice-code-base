@@ -32,4 +32,4 @@ jobs:
 
       - name: testing
         run: |
-          echo "Testing f7-02"
+          echo "Testing feature2"
